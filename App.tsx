@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { ParkingMap } from './components/ParkingMap';
 import { DetailCard } from './components/DetailCard';
 import { fetchCarparkData, fetchOccupancyDataOnly } from './services/tfnswService';
+import { hasRealtimeOccupancyData } from './constants';
 import { AppState, Carpark } from './types';
 import { MapPin, RefreshCw, AlertTriangle, Search, List, Map as MapIcon, ArrowUpDown, Navigation, ChevronRight, X } from 'lucide-react';
 
@@ -354,7 +355,7 @@ const App: React.FC = () => {
                         <div className="flex-1">
                             <div className="font-medium mb-1">Real-time occupancy data unavailable</div>
                             <div className="text-blue-700 text-[11px]">
-                                API quota limit reached. Wait a few minutes and click refresh, or request higher limits from OpenDataHelp@transport.nsw.gov.au
+                                According to <a href="https://opendata.transport.nsw.gov.au/dataset/car-park-api" target="_blank" rel="noopener noreferrer" className="underline">official documentation</a>, only 5 Metro stations (Tallawong, Bella Vista, Hills Showground, Cherrybrook, Kellyville) have real-time data. API quota may also be limited. Click refresh to retry.
                             </div>
                         </div>
                     </div>
@@ -440,9 +441,27 @@ const App: React.FC = () => {
                                         </div>
                                         <p className="text-xs text-slate-500 truncate">Zone: {carpark.tsn || 'N/A'}</p>
                                     </div>
-                                    <div className={`flex flex-col items-end shrink-0 px-3 py-1.5 rounded-lg ${statusColor}`}>
-                                        <span className="text-xl font-bold leading-none">{free}</span>
-                                        <span className="text-[10px] font-semibold uppercase opacity-80">Free</span>
+                                    <div className="flex flex-col items-end shrink-0">
+                                        {total > 0 ? (
+                                            <div className={`px-3 py-1.5 rounded-lg ${statusColor}`}>
+                                                <span className="text-xl font-bold leading-none">{free}</span>
+                                                <span className="text-[10px] font-semibold uppercase opacity-80">Free</span>
+                                            </div>
+                                        ) : (
+                                            <div className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-500">
+                                                {hasRealtimeOccupancyData(carpark) ? (
+                                                    <>
+                                                        <span className="text-xs font-medium">Real-time</span>
+                                                        <span className="text-[10px] opacity-80">Available</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <span className="text-xs font-medium">No data</span>
+                                                        <span className="text-[10px] opacity-80">Available</span>
+                                                    </>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             );
@@ -488,10 +507,17 @@ const App: React.FC = () => {
                                     <p className="text-xs text-slate-400 mt-0.5">{distStr} away</p>
                                 </div>
                                 <div className="flex items-center gap-2 text-right">
-                                    <div className="flex flex-col items-end">
-                                        <span className={`text-sm font-bold ${textColor}`}>{free}</span>
-                                        <span className="text-[9px] text-slate-400 uppercase">Free</span>
-                                    </div>
+                                    {total > 0 ? (
+                                        <div className="flex flex-col items-end">
+                                            <span className={`text-sm font-bold ${textColor}`}>{free}</span>
+                                            <span className="text-[9px] text-slate-400 uppercase">Free</span>
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-end">
+                                            <span className="text-xs text-slate-400">—</span>
+                                            <span className="text-[9px] text-slate-400 uppercase">No data</span>
+                                        </div>
+                                    )}
                                     <ChevronRight className="w-4 h-4 text-slate-300" />
                                 </div>
                             </div>

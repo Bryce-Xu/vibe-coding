@@ -6,6 +6,50 @@ export const TFNSW_API_KEY = import.meta.env.VITE_TFNSW_API_KEY || "eyJhbGciOiJI
 export const TFNSW_BASE_URL = "https://api.transport.nsw.gov.au/v1/carpark";
 export const TFNSW_OCCUPANCY_URL = "https://api.transport.nsw.gov.au/v1/carpark/occupancy";
 
+/**
+ * Metro stations with real-time occupancy data
+ * According to official documentation: https://opendata.transport.nsw.gov.au/dataset/car-park-api
+ * Only these 5 Sydney Metro stations report real-time occupancy levels
+ */
+export const METRO_STATIONS_WITH_REALTIME_DATA = [
+  'Tallawong',
+  'Bella Vista', 
+  'Hills Showground',
+  'Cherrybrook',
+  'Kellyville'
+];
+
+/**
+ * Facility IDs for Metro stations (based on API response)
+ * These are the active Park&Ride facilities, not historical ones
+ */
+export const METRO_STATION_FACILITY_IDS = [
+  '26', // Tallawong P1
+  '27', // Tallawong P2
+  '28', // Tallawong P3
+  '31', // Bella Vista
+  '32', // Hills Showground
+  '33', // Cherrybrook
+  '29', // Kellyville (north)
+  '30', // Kellyville (south)
+];
+
+/**
+ * Check if a carpark has real-time occupancy data available
+ */
+export const hasRealtimeOccupancyData = (carpark: { facility_id: string; facility_name: string }): boolean => {
+  // Check by facility ID
+  if (METRO_STATION_FACILITY_IDS.includes(carpark.facility_id)) {
+    return true;
+  }
+  
+  // Check by name (fallback)
+  const nameLower = carpark.facility_name.toLowerCase();
+  return METRO_STATIONS_WITH_REALTIME_DATA.some(station => 
+    nameLower.includes(station.toLowerCase())
+  );
+};
+
 // Mock data to use if API fails (likely due to CORS in browser environment)
 export const MOCK_CARPARKS = [
   {

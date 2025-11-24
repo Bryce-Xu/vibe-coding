@@ -1,6 +1,7 @@
 import React from 'react';
 import { Carpark } from '../types';
-import { X, Navigation, Car, Clock } from 'lucide-react';
+import { X, Navigation, Car, Clock, Info } from 'lucide-react';
+import { hasRealtimeOccupancyData } from '../constants';
 
 interface DetailCardProps {
   carpark: Carpark | null;
@@ -13,16 +14,25 @@ export const DetailCard: React.FC<DetailCardProps> = ({ carpark, onClose, userLo
 
   const total = carpark.occupancy.total;
   const free = carpark.spots_free || 0;
-  const percentage = Math.round((free / total) * 100);
+  const hasRealtimeData = hasRealtimeOccupancyData(carpark);
+  const hasOccupancyData = total > 0;
   
   let statusColor = "text-green-600 bg-green-50 border-green-200";
   let statusText = "Good Availability";
-  if (percentage < 10) {
-      statusColor = "text-red-600 bg-red-50 border-red-200";
-      statusText = "Full / Busy";
-  } else if (percentage < 30) {
-      statusColor = "text-orange-600 bg-orange-50 border-orange-200";
-      statusText = "Filling Up";
+  let percentage = 0;
+  
+  if (hasOccupancyData) {
+    percentage = Math.round((free / total) * 100);
+    if (percentage < 10) {
+        statusColor = "text-red-600 bg-red-50 border-red-200";
+        statusText = "Full / Busy";
+    } else if (percentage < 30) {
+        statusColor = "text-orange-600 bg-orange-50 border-orange-200";
+        statusText = "Filling Up";
+    }
+  } else {
+    statusColor = "text-slate-500 bg-slate-50 border-slate-200";
+    statusText = hasRealtimeData ? "Real-time data available" : "No occupancy data";
   }
 
   const handleDirections = () => {
@@ -53,11 +63,24 @@ export const DetailCard: React.FC<DetailCardProps> = ({ carpark, onClose, userLo
              <div>
                 <span className="block text-xs font-semibold uppercase tracking-wider opacity-80">Status</span>
                 <span className="text-lg font-bold">{statusText}</span>
+                {!hasOccupancyData && hasRealtimeData && (
+                  <div className="mt-1 flex items-center gap-1 text-[10px] text-blue-600">
+                    <Info className="w-3 h-3" />
+                    <span>This Metro station supports real-time data</span>
+                  </div>
+                )}
              </div>
-             <div className="text-right">
-                <span className="block text-3xl font-black">{free}</span>
-                <span className="text-xs font-medium opacity-80">spots free</span>
-             </div>
+             {hasOccupancyData ? (
+               <div className="text-right">
+                  <span className="block text-3xl font-black">{free}</span>
+                  <span className="text-xs font-medium opacity-80">spots free</span>
+               </div>
+             ) : (
+               <div className="text-right">
+                  <span className="block text-lg font-semibold opacity-60">—</span>
+                  <span className="text-xs font-medium opacity-80">No data</span>
+               </div>
+             )}
           </div>
 
           {/* Details Grid */}
