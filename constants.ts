@@ -4,6 +4,7 @@
 export const TFNSW_API_KEY = import.meta.env.VITE_TFNSW_API_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJXTmFZVG1xNDlXUEdVQzBEYlVLcEpGRkNoY09mMk9pUzY5c0hfeTBOMW9FIiwiaWF0IjoxNzYzOTYyMDEyfQ.LdAIkdBLyjwTEECvBsEQ2VMgHcbc54BzDoymVUftAHY";
 
 export const TFNSW_BASE_URL = "https://api.transport.nsw.gov.au/v1/carpark";
+export const TFNSW_OCCUPANCY_URL = "https://api.transport.nsw.gov.au/v1/carpark/occupancy";
 
 // Mock data to use if API fails (likely due to CORS in browser environment)
 export const MOCK_CARPARKS = [

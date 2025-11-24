@@ -291,6 +291,16 @@ const App: React.FC = () => {
                 </div>
             </div>
         )}
+        
+        {/* Info banner for carparks without occupancy data */}
+        {!state.error && state.carparks.length > 0 && state.carparks.every(c => !c.occupancy.total || c.occupancy.total === 0) && (
+             <div className="max-w-4xl mx-auto mt-2 pointer-events-auto">
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-2 px-3 flex items-center gap-2 text-xs text-blue-800 shadow-sm animate-in fade-in slide-in-from-top-2">
+                    <AlertTriangle className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                    <span>Real-time occupancy data may be limited due to API rate limits. Carpark locations are shown.</span>
+                </div>
+            </div>
+        )}
       </div>
 
       {/* Main Content Area */}
