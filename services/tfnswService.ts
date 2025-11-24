@@ -1,5 +1,6 @@
 import { Carpark, Occupancy } from '../types';
 import { TFNSW_API_KEY, TFNSW_BASE_URL, TFNSW_OCCUPANCY_URL } from '../constants';
+import { scrapeCarparkOccupancy, matchScrapedData } from './webScrapingService';
 
 // Helper to calculate free spots safely
 const enrichCarparkData = (carpark: any): Carpark => {
@@ -142,9 +143,39 @@ const mergeOccupancyData = (carparks: Carpark[], occupancyData: Record<string, a
 
 /**
  * Fetch only occupancy data (for manual refresh)
+ * PRIORITY: Web scraping first, then API as fallback
  */
 export const fetchOccupancyDataOnly = async (): Promise<Record<string, any>> => {
-  return fetchOccupancyData();
+  // Try web scraping first
+  try {
+    const scrapedData = await scrapeCarparkOccupancy();
+    if (scrapedData && Object.keys(scrapedData).length > 0) {
+      // Convert scraped data format to match API format
+      const convertedData: Record<string, any> = {};
+      Object.entries(scrapedData).forEach(([name, data]) => {
+        convertedData[name] = {
+          total: data.spaces * 2, // Estimate total
+          occupied: data.spaces, // This is approximate
+          available: data.spaces
+        };
+      });
+      return convertedData;
+    }
+  } catch (error) {
+    console.warn('⚠️ Web scraping failed, trying API...', error);
+  }
+  
+  // Fallback to API
+  try {
+    const apiData = await fetchOccupancyData();
+    if (apiData && Object.keys(apiData).length > 0) {
+      return apiData;
+    }
+  } catch (error) {
+    console.error('⚠️ API also failed:', error);
+  }
+  
+  return {};
 };
 
 export const fetchCarparkData = async (): Promise<{ data: Carpark[], isDemo: boolean }> => {
@@ -238,28 +269,38 @@ export const fetchCarparkData = async (): Promise<{ data: Carpark[], isDemo: boo
 
   console.log(`✅ Successfully loaded ${parsedData.length} carparks from Transport NSW API`);
 
-  // Try to fetch occupancy data (this may fail due to rate limits)
-  // We'll attempt this with retry logic and graceful degradation
-  console.log('📊 Attempting to fetch real-time occupancy data...');
+  // PRIORITY: Try web scraping first (more reliable and no quota limits)
+  console.log('📊 Attempting to fetch real-time occupancy data from website...');
   
+  try {
+    const scrapedData = await scrapeCarparkOccupancy();
+    if (scrapedData && Object.keys(scrapedData).length > 0) {
+      const enrichedData = matchScrapedData(parsedData, scrapedData);
+      const enrichedCount = enrichedData.filter(c => c.occupancy.total > 0).length;
+      console.log(`✅ Successfully loaded occupancy data from website for ${enrichedCount} carparks`);
+      return { data: enrichedData, isDemo: false };
+    }
+  } catch (scrapeError) {
+    console.warn('⚠️ Web scraping failed, trying API as fallback:', scrapeError);
+  }
+  
+  // Fallback: Try API if web scraping fails
+  console.log('🔄 Web scraping unavailable, trying API...');
   try {
     const occupancyData = await fetchOccupancyData();
     
     if (occupancyData && Object.keys(occupancyData).length > 0) {
       const enrichedData = mergeOccupancyData(parsedData, occupancyData);
       const enrichedCount = enrichedData.filter(c => c.occupancy.total > 0).length;
-      console.log(`✅ Successfully loaded occupancy data for ${enrichedCount} carparks`);
+      console.log(`✅ Successfully loaded occupancy data from API for ${enrichedCount} carparks`);
       return { data: enrichedData, isDemo: false };
     } else {
-      console.log('ℹ️ Occupancy data not available (may be due to rate limits). Carpark list will be shown without real-time availability.');
-      console.info('💡 To get real-time occupancy data:');
-      console.info('   1. Wait a few minutes for quota to reset');
-      console.info('   2. Request higher quota: OpenDataHelp@transport.nsw.gov.au');
-      return { data: parsedData, isDemo: false };
+      console.log('ℹ️ API returned no occupancy data (may be due to rate limits).');
     }
   } catch (error) {
-    console.warn('⚠️ Error fetching occupancy data:', error);
-    console.log('ℹ️ Continuing with carpark list only (no occupancy data)');
-    return { data: parsedData, isDemo: false };
+    console.warn('⚠️ API also failed:', error);
   }
+  
+  console.log('ℹ️ Carpark list will be shown without real-time availability.');
+  return { data: parsedData, isDemo: false };
 };

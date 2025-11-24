@@ -9,6 +9,11 @@ export default defineConfig(({ mode }) => {
         port: 3000,
         host: '0.0.0.0',
         proxy: {
+          // Proxy scraper API requests to local backend service
+          '/api/scrape': {
+            target: `http://localhost:${process.env.SCRAPER_PORT || 3001}`,
+            changeOrigin: true,
+          },
           // Proxy API requests to avoid CORS issues in development
           '/api/tfnsw': {
             target: 'https://api.transport.nsw.gov.au',

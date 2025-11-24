@@ -1,4 +1,4 @@
-# Multi-stage build for Vite + React app
+# Multi-stage build for Vite + React app with scraper service
 FROM node:20-alpine AS builder
 
 WORKDIR /app
@@ -20,21 +20,45 @@ ENV VITE_TFNSW_API_KEY=${VITE_TFNSW_API_KEY}
 
 RUN npm run build
 
-# Production stage - serve static files
+# Production stage - serve static files + scraper API
 FROM node:20-alpine
 
 WORKDIR /app
 
-# Install serve to serve static files
+# Install dependencies for Puppeteer and runtime
+# Note: Alpine Linux requires additional packages for Chromium
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont \
+    && rm -rf /var/cache/apk/*
+
+# Set Puppeteer to use installed Chromium
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
+# Install serve and production dependencies
 RUN npm install -g serve
+
+# Copy package files and install production dependencies
+COPY package*.json ./
+RUN npm ci --only=production
 
 # Copy built files from builder stage
 COPY --from=builder /app/dist ./dist
 
-# Expose port (PORT will be set at runtime by Koyeb)
-EXPOSE 8000
+# Copy server files
+COPY server ./server
 
-# Start application using PORT environment variable
-# Use shell form (sh -c) to ensure environment variable expansion
-CMD sh -c "serve -s dist -l ${PORT:-8000}"
+# Expose ports
+# PORT for static file server (main app)
+# SCRAPER_PORT for scraper API (default 3001)
+EXPOSE 8000 3001
+
+# Start both services
+# Start scraper API and static file server
+CMD ["sh", "server/start.sh"]
 

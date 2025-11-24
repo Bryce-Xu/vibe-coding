@@ -1,0 +1,28 @@
+{
+  "name": "nsw-park-ride-scraper-service",
+  "version": "1.0.0",
+  "description": "Backend scraper service for Transport NSW Park&Ride website",
+  "type": "module",
+  "main": "src/api.js",
+  "scripts": {
+    "start": "node src/api.js",
+    "dev": "node --watch src/api.js",
+    "test": "node src/scraper.js"
+  },
+  "keywords": [
+    "scraper",
+    "puppeteer",
+    "transport-nsw",
+    "park-ride"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^5.1.0",
+    "puppeteer": "^24.31.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
+
