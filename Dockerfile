@@ -53,12 +53,11 @@ COPY --from=builder /app/dist ./dist
 # Copy server files
 COPY server ./server
 
-# Expose ports
-# PORT for static file server (main app)
-# SCRAPER_PORT for scraper API (default 3001)
-EXPOSE 8000 3001
+# Expose port (single port as per deployment guidelines)
+# PORT will be set by deployment platform
+EXPOSE 8000
 
-# Start both services
-# Start scraper API and static file server
+# Start server
+# Express server handles both API and static files
 CMD ["sh", "server/start.sh"]
 
