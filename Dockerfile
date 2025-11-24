@@ -57,7 +57,8 @@ COPY server ./server
 # PORT will be set by deployment platform
 EXPOSE 8000
 
-# Start server
+# Start server using PORT environment variable
+# Use shell form (sh -c) to ensure PORT environment variable is properly expanded
 # Express server handles both API and static files
-CMD ["sh", "server/start.sh"]
+CMD sh -c "node server/api.js"
 

@@ -14,8 +14,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 8000;
-const SCRAPER_PORT = process.env.SCRAPER_PORT || 3001;
+// Read PORT from environment variable (required by deployment platform)
+// Koyeb sets PORT at runtime, so we must honor it
+const PORT = parseInt(process.env.PORT || '8000', 10);
+const SCRAPER_PORT = parseInt(process.env.SCRAPER_PORT || '3001', 10);
 const BASE_PATH =
   process.env.BASE_PATH ||
   (process.env.SERVICE_NAME ? `/${process.env.SERVICE_NAME}` : '');
