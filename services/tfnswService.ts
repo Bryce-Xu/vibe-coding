@@ -17,10 +17,13 @@ const enrichCarparkData = (carpark: any): Carpark => {
 };
 
 /**
- * Fetch occupancy data for carparks
- * This endpoint may have rate limits, so we handle errors gracefully
+ * Fetch occupancy data for carparks with retry and rate limit handling
+ * This endpoint may have rate limits, so we implement smart retry logic
  */
-const fetchOccupancyData = async (): Promise<Record<string, any>> => {
+const fetchOccupancyData = async (retryCount = 0): Promise<Record<string, any>> => {
+  const MAX_RETRIES = 2;
+  const RETRY_DELAY = 2000; // 2 seconds
+
   try {
     // Use proxy in development to avoid CORS issues
     const isDevelopment = import.meta.env.DEV;
@@ -44,17 +47,47 @@ const fetchOccupancyData = async (): Promise<Record<string, any>> => {
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown error');
-      // If it's a quota/rate limit error, we'll continue without occupancy data
-      if (response.status === 429 || errorText.includes('quota') || errorText.includes('rate limit')) {
-        console.warn('⚠️ Occupancy API quota exceeded. Continuing without real-time occupancy data.');
-        return {};
+      
+      // Check if it's a quota/rate limit error
+      const isQuotaError = response.status === 429 || 
+                          errorText.includes('quota') || 
+                          errorText.includes('rate limit') ||
+                          errorText.includes('exceeded');
+
+      if (isQuotaError) {
+        // If we haven't exceeded max retries, wait and retry
+        if (retryCount < MAX_RETRIES) {
+          console.log(`⏳ Occupancy API quota exceeded. Retrying in ${RETRY_DELAY/1000}s... (${retryCount + 1}/${MAX_RETRIES})`);
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+          return fetchOccupancyData(retryCount + 1);
+        } else {
+          console.warn('⚠️ Occupancy API quota exceeded after retries. Continuing without real-time occupancy data.');
+          console.info('💡 Tip: You can request higher quota limits by emailing OpenDataHelp@transport.nsw.gov.au');
+          return {};
+        }
       }
-      throw new Error(`Failed to fetch occupancy data: ${response.status}`);
+      
+      // For other errors, throw immediately
+      throw new Error(`Failed to fetch occupancy data: ${response.status} ${errorText}`);
     }
 
     const data = await response.json();
+    
+    // Validate that we got actual occupancy data
+    if (!data || (typeof data === 'object' && Object.keys(data).length === 0)) {
+      console.warn('⚠️ Occupancy API returned empty data');
+      return {};
+    }
+
     return data || {};
   } catch (error) {
+    // Only retry on network errors, not on quota errors (handled above)
+    if (retryCount < MAX_RETRIES && error instanceof TypeError) {
+      console.log(`⏳ Network error. Retrying in ${RETRY_DELAY/1000}s... (${retryCount + 1}/${MAX_RETRIES})`);
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+      return fetchOccupancyData(retryCount + 1);
+    }
+    
     console.warn('⚠️ Failed to fetch occupancy data:', error);
     return {};
   }
@@ -105,6 +138,13 @@ const mergeOccupancyData = (carparks: Carpark[], occupancyData: Record<string, a
     
     return carpark;
   });
+};
+
+/**
+ * Fetch only occupancy data (for manual refresh)
+ */
+export const fetchOccupancyDataOnly = async (): Promise<Record<string, any>> => {
+  return fetchOccupancyData();
 };
 
 export const fetchCarparkData = async (): Promise<{ data: Carpark[], isDemo: boolean }> => {
@@ -199,15 +239,27 @@ export const fetchCarparkData = async (): Promise<{ data: Carpark[], isDemo: boo
   console.log(`✅ Successfully loaded ${parsedData.length} carparks from Transport NSW API`);
 
   // Try to fetch occupancy data (this may fail due to rate limits)
+  // We'll attempt this with retry logic and graceful degradation
   console.log('📊 Attempting to fetch real-time occupancy data...');
-  const occupancyData = await fetchOccupancyData();
   
-  if (Object.keys(occupancyData).length > 0) {
-    console.log(`✅ Successfully loaded occupancy data for ${Object.keys(occupancyData).length} carparks`);
-    const enrichedData = mergeOccupancyData(parsedData, occupancyData);
-    return { data: enrichedData, isDemo: false };
-  } else {
-    console.log('ℹ️ Occupancy data not available (may be due to rate limits). Carpark list will be shown without real-time availability.');
+  try {
+    const occupancyData = await fetchOccupancyData();
+    
+    if (occupancyData && Object.keys(occupancyData).length > 0) {
+      const enrichedData = mergeOccupancyData(parsedData, occupancyData);
+      const enrichedCount = enrichedData.filter(c => c.occupancy.total > 0).length;
+      console.log(`✅ Successfully loaded occupancy data for ${enrichedCount} carparks`);
+      return { data: enrichedData, isDemo: false };
+    } else {
+      console.log('ℹ️ Occupancy data not available (may be due to rate limits). Carpark list will be shown without real-time availability.');
+      console.info('💡 To get real-time occupancy data:');
+      console.info('   1. Wait a few minutes for quota to reset');
+      console.info('   2. Request higher quota: OpenDataHelp@transport.nsw.gov.au');
+      return { data: parsedData, isDemo: false };
+    }
+  } catch (error) {
+    console.warn('⚠️ Error fetching occupancy data:', error);
+    console.log('ℹ️ Continuing with carpark list only (no occupancy data)');
     return { data: parsedData, isDemo: false };
   }
 };

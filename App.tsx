@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { ParkingMap } from './components/ParkingMap';
 import { DetailCard } from './components/DetailCard';
-import { fetchCarparkData } from './services/tfnswService';
+import { fetchCarparkData, fetchOccupancyDataOnly } from './services/tfnswService';
 import { AppState, Carpark } from './types';
 import { MapPin, RefreshCw, AlertTriangle, Search, List, Map as MapIcon, ArrowUpDown, Navigation, ChevronRight, X } from 'lucide-react';
 
@@ -45,6 +45,7 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<SortOption>('distance');
   const [viewMode, setViewMode] = useState<ViewMode>('map');
+  const [loadingOccupancy, setLoadingOccupancy] = useState(false);
 
   const loadData = useCallback(async () => {
     setState(prev => ({ ...prev, loading: true, error: null, demoMode: false }));
@@ -109,6 +110,58 @@ const App: React.FC = () => {
   const handleCloseDetail = () => {
     setState(prev => ({ ...prev, selectedCarpark: null }));
   };
+
+  const handleRefreshOccupancy = useCallback(async () => {
+    if (state.carparks.length === 0) {
+      console.warn('No carparks loaded. Please load carparks first.');
+      return;
+    }
+
+    setLoadingOccupancy(true);
+    try {
+      console.log('🔄 Manually refreshing occupancy data...');
+      const occupancyData = await fetchOccupancyDataOnly();
+      
+      if (occupancyData && Object.keys(occupancyData).length > 0) {
+        // Merge occupancy data into existing carparks
+        const enrichedCarparks = state.carparks.map(carpark => {
+          const occupancy = occupancyData[carpark.facility_id];
+          if (occupancy && typeof occupancy === 'object') {
+            const total = parseInt(String(occupancy.total || occupancy.Total || 0), 10);
+            const occupied = parseInt(String(occupancy.occupied || occupancy.Occupied || 0), 10);
+            return {
+              ...carpark,
+              occupancy: {
+                loop: String(occupancy.loop || occupancy.Loop || '1'),
+                total,
+                occupied,
+                month: String(occupancy.month || occupancy.Month || ''),
+                time: String(occupancy.time || occupancy.Time || '')
+              },
+              spots_free: Math.max(0, total - occupied)
+            };
+          }
+          return carpark;
+        });
+
+        const enrichedCount = enrichedCarparks.filter(c => c.occupancy.total > 0).length;
+        console.log(`✅ Successfully refreshed occupancy data for ${enrichedCount} carparks`);
+        
+        setState(prev => ({
+          ...prev,
+          carparks: enrichedCarparks
+        }));
+      } else {
+        console.warn('⚠️ Occupancy data not available (quota may be exceeded)');
+        alert('Occupancy data is currently unavailable. This may be due to API quota limits. Please try again later or contact OpenDataHelp@transport.nsw.gov.au to request higher limits.');
+      }
+    } catch (error) {
+      console.error('Error refreshing occupancy:', error);
+      alert('Failed to refresh occupancy data. Please try again later.');
+    } finally {
+      setLoadingOccupancy(false);
+    }
+  }, [state.carparks]);
 
   const handleViewToggle = () => {
     setViewMode(prev => prev === 'map' ? 'list' : 'map');
@@ -295,9 +348,22 @@ const App: React.FC = () => {
         {/* Info banner for carparks without occupancy data */}
         {!state.error && state.carparks.length > 0 && state.carparks.every(c => !c.occupancy.total || c.occupancy.total === 0) && (
              <div className="max-w-4xl mx-auto mt-2 pointer-events-auto">
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-2 px-3 flex items-center gap-2 text-xs text-blue-800 shadow-sm animate-in fade-in slide-in-from-top-2">
-                    <AlertTriangle className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                    <span>Real-time occupancy data may be limited due to API rate limits. Carpark locations are shown.</span>
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-2 px-3 flex items-center justify-between gap-2 text-xs text-blue-800 shadow-sm animate-in fade-in slide-in-from-top-2">
+                    <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                        <span>Real-time occupancy data unavailable. Click to refresh.</span>
+                    </div>
+                    <button
+                        onClick={handleRefreshOccupancy}
+                        disabled={loadingOccupancy}
+                        className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+                            loadingOccupancy 
+                                ? 'bg-blue-100 text-blue-400 cursor-not-allowed' 
+                                : 'bg-blue-200 text-blue-700 hover:bg-blue-300 active:scale-95'
+                        }`}
+                    >
+                        {loadingOccupancy ? 'Loading...' : 'Refresh Occupancy'}
+                    </button>
                 </div>
             </div>
         )}
