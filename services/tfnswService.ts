@@ -235,11 +235,10 @@ const fetchCarparkDataFromGraphQL = async (): Promise<Carpark[]> => {
       query: "query{result:widgets{pnrLocations{name spots occupancy}}}"
     };
 
-    // Use proxy in development to avoid CORS issues, direct URL in production
-    const isDevelopment = import.meta.env.DEV;
-    const graphqlUrl = isDevelopment 
-      ? '/api/graphql'  // Use Vite proxy in development
-      : GRAPHQL_API_URL; // Direct API call in production
+    // Use proxy in both development and production to avoid CORS issues
+    // In development: Vite proxy handles it
+    // In production: Express server proxy handles it
+    const graphqlUrl = '/api/graphql';
 
     const response = await fetch(graphqlUrl, {
       method: 'POST',

@@ -2,7 +2,7 @@
 
 ## 问题
 
-Transport NSW API 不允许直接从浏览器调用（CORS 限制），导致在本地开发时出现 "Failed to fetch" 错误。
+Transport NSW GraphQL API (`https://transportnsw.info/api/graphql`) 不允许直接从浏览器调用（CORS 限制），导致在生产环境中出现 `strict-origin-when-cross-origin` 错误。
 
 ## 解决方案
 
@@ -11,18 +11,31 @@ Transport NSW API 不允许直接从浏览器调用（CORS 限制），导致在
 使用 **Vite 代理**来绕过 CORS 限制：
 
 1. **配置**: `vite.config.ts` 中已配置代理
+   - 所有 `/api/graphql` 请求会被代理到 `https://transportnsw.info/api/graphql`
    - 所有 `/api/tfnsw/*` 请求会被代理到 `https://api.transport.nsw.gov.au`
-   - 代理会自动添加 `Authorization` header（从环境变量读取）
+   - 代理会自动添加必要的 headers
 
-2. **使用**: 代码会自动检测开发环境并使用代理
-   - 开发环境：使用 `/api/tfnsw/v1/carpark`
-   - 生产环境：直接使用 `https://api.transport.nsw.gov.au/v1/carpark`
+2. **使用**: 代码会自动使用代理
+   - 开发环境：使用 `/api/graphql`（Vite 代理）
+   - 生产环境：使用 `/api/graphql`（Express 服务器代理）
 
 ### 生产环境（部署后）
 
-部署后的应用通常不会有 CORS 问题，因为：
-- 服务器端调用 API（不是浏览器直接调用）
-- 或者部署平台配置了正确的 CORS 头
+使用 **Express 服务器代理**来绕过 CORS 限制：
+
+1. **架构变更**: Express 服务器现在同时提供：
+   - API 端点（包括 GraphQL 代理）
+   - 静态文件服务
+
+2. **GraphQL 代理**: `server/api.js` 中添加了 `/api/graphql` 端点
+   - 接收前端的 GraphQL 请求
+   - 转发到 `https://transportnsw.info/api/graphql`
+   - 返回响应给前端
+
+3. **统一端口**: 所有请求都通过同一个端口（8000）处理
+   - 前端应用：`http://your-domain.com/`
+   - API 端点：`http://your-domain.com/api/graphql`
+   - 静态文件：由 Express 自动提供
 
 ## 验证
 
@@ -79,17 +92,42 @@ VITE_TFNSW_API_KEY=your-api-key-here
 
 ## 工作原理
 
+### 开发环境
 ```
-浏览器请求: /api/tfnsw/v1/carpark
+浏览器请求: /api/graphql
     ↓
-Vite 代理服务器
+Vite 代理服务器 (localhost:3000)
     ↓
-添加 Authorization header (从 .env.local)
-    ↓
-转发到: https://api.transport.nsw.gov.au/v1/carpark
+转发到: https://transportnsw.info/api/graphql
     ↓
 返回响应给浏览器
 ```
 
-这样浏览器就不会遇到 CORS 问题，因为请求是同源的（都来自 localhost:3000）。
+### 生产环境
+```
+浏览器请求: /api/graphql
+    ↓
+Express 服务器 (端口 8000)
+    ↓
+转发到: https://transportnsw.info/api/graphql
+    ↓
+返回响应给浏览器
+```
+
+这样浏览器就不会遇到 CORS 问题，因为请求是同源的（都来自同一个域名）。
+
+## 代码更改
+
+1. **`server/api.js`**: 
+   - 添加了 `/api/graphql` POST 端点
+   - 添加了静态文件服务功能（生产环境）
+   - 更新了 CORS 配置以支持 POST 请求
+
+2. **`server/start.sh`**: 
+   - 简化了启动脚本，只启动 Express 服务器
+   - Express 服务器现在同时处理 API 和静态文件
+
+3. **`services/tfnswService.ts`**: 
+   - 移除了生产环境直接调用 GraphQL API 的代码
+   - 现在统一使用 `/api/graphql` 代理端点
 
