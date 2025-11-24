@@ -16,6 +16,9 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 8000;
 const SCRAPER_PORT = process.env.SCRAPER_PORT || 3001;
+const BASE_PATH =
+  process.env.BASE_PATH ||
+  (process.env.SERVICE_NAME ? `/${process.env.SERVICE_NAME}` : '');
 
 // Enable CORS
 app.use((req, res, next) => {
@@ -29,6 +32,16 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json());
+
+// Normalize base path so the app can run under sub-paths like /nsw-park-ride-checker
+if (BASE_PATH && BASE_PATH !== '/') {
+  app.use((req, _res, next) => {
+    if (req.url.startsWith(BASE_PATH)) {
+      req.url = req.url.slice(BASE_PATH.length) || '/';
+    }
+    next();
+  });
+}
 
 // API routes (must be before static file serving)
 // Health check endpoints (for deployment platform)
@@ -118,14 +131,15 @@ if (isProduction) {
   
   app.use(express.static(distPath));
   
-  // Handle client-side routing - serve index.html for all non-API routes
-  app.get('*', (req, res, next) => {
-    // Skip API routes (shouldn't reach here for API routes, but just in case)
+  const serveIndex = (req, res, next) => {
     if (req.path.startsWith('/api/')) {
       return next();
     }
     res.sendFile(indexHtmlPath);
-  });
+  };
+  
+  // Handle client-side routing - serve index.html for all non-API routes
+  app.get(/.*/, serveIndex);
   
   console.log(`📁 Serving static files from ${distPath}`);
 }
