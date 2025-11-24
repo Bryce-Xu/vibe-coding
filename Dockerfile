@@ -12,12 +12,8 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Build the application with environment variables
-# Vite will use VITE_ prefixed env vars during build
-# Koyeb injects env_vars as environment variables during build
-# Note: Environment variables from env_vars will be available during build
-ENV VITE_TFNSW_API_KEY=${VITE_TFNSW_API_KEY}
-
+# Build the application
+# Note: No API keys needed - we use GraphQL API via proxy endpoint
 RUN npm run build
 
 # Production stage - serve static files + scraper API
