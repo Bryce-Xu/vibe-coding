@@ -8,6 +8,24 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
+        proxy: {
+          // Proxy API requests to avoid CORS issues in development
+          '/api/tfnsw': {
+            target: 'https://api.transport.nsw.gov.au',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api\/tfnsw/, ''),
+            configure: (proxy, _options) => {
+              proxy.on('proxyReq', (proxyReq, req, _res) => {
+                // Add API key from environment variable
+                const apiKey = env.VITE_TFNSW_API_KEY;
+                if (apiKey) {
+                  proxyReq.setHeader('Authorization', `apikey ${apiKey}`);
+                }
+                proxyReq.setHeader('Accept', 'application/json');
+              });
+            },
+          },
+        },
       },
       plugins: [react()],
       define: {

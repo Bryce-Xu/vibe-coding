@@ -22,12 +22,24 @@ const enrichCarparkData = (carpark: any): Carpark => {
  */
 const fetchOccupancyData = async (): Promise<Record<string, any>> => {
   try {
-    const response = await fetch(TFNSW_OCCUPANCY_URL, {
+    // Use proxy in development to avoid CORS issues
+    const isDevelopment = import.meta.env.DEV;
+    const occupancyUrl = isDevelopment 
+      ? `/api/tfnsw/v1/carpark/occupancy`  // Use Vite proxy in development
+      : TFNSW_OCCUPANCY_URL;                // Direct API call in production
+
+    const response = await fetch(occupancyUrl, {
       method: 'GET',
-      headers: {
-        'Authorization': `apikey ${TFNSW_API_KEY}`,
-        'Accept': 'application/json'
-      }
+      headers: isDevelopment 
+        ? {
+            // In development, proxy handles auth
+            'Accept': 'application/json'
+          }
+        : {
+            // In production, send auth header directly
+            'Authorization': `apikey ${TFNSW_API_KEY}`,
+            'Accept': 'application/json'
+          }
     });
 
     if (!response.ok) {
@@ -101,19 +113,48 @@ export const fetchCarparkData = async (): Promise<{ data: Carpark[], isDemo: boo
     throw new Error("TFNSW API Key is not configured. Please set VITE_TFNSW_API_KEY environment variable.");
   }
 
+  // Use proxy in development to avoid CORS issues, direct URL in production
+  const isDevelopment = import.meta.env.DEV;
+  const apiUrl = isDevelopment 
+    ? `/api/tfnsw/v1/carpark`  // Use Vite proxy in development
+    : TFNSW_BASE_URL;            // Direct API call in production
+
   // Fetch carpark list
-  const response = await fetch(TFNSW_BASE_URL, {
+  const response = await fetch(apiUrl, {
     method: 'GET',
-    headers: {
-      'Authorization': `apikey ${TFNSW_API_KEY}`,
-      'Accept': 'application/json'
-    }
+    headers: isDevelopment 
+      ? {
+          // In development, proxy handles auth
+          'Accept': 'application/json'
+        }
+      : {
+          // In production, send auth header directly
+          'Authorization': `apikey ${TFNSW_API_KEY}`,
+          'Accept': 'application/json'
+        }
   });
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => 'Unknown error');
     console.error(`API Error: ${response.status} ${response.statusText}`, errorText);
-    throw new Error(`Failed to fetch parking data: ${response.status} ${response.statusText}. ${errorText}`);
+    
+    // Provide more helpful error messages
+    let errorMessage = `Failed to fetch parking data: ${response.status} ${response.statusText}`;
+    if (errorText) {
+      try {
+        const errorJson = JSON.parse(errorText);
+        if (errorJson.ErrorDetails?.Message) {
+          errorMessage = errorJson.ErrorDetails.Message;
+        }
+      } catch {
+        // If not JSON, use the text as-is
+        if (errorText.length < 200) {
+          errorMessage += `. ${errorText}`;
+        }
+      }
+    }
+    
+    throw new Error(errorMessage);
   }
 
   const data = await response.json();
