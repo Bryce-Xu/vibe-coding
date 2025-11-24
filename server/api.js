@@ -8,6 +8,7 @@ import express from 'express';
 import { scrapeCarparkOccupancy } from './scraper.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,9 +31,18 @@ app.use((req, res, next) => {
 app.use(express.json());
 
 // API routes (must be before static file serving)
-// Health check endpoint
+// Health check endpoints (for deployment platform)
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', service: 'scraper-api' });
+  res.json({ status: 'ok', service: 'nsw-park-ride-checker', timestamp: new Date().toISOString() });
+});
+
+app.get('/', (req, res, next) => {
+  // If this is a health check or API request, handle it
+  if (req.path === '/' && req.query.health) {
+    return res.json({ status: 'ok', service: 'nsw-park-ride-checker' });
+  }
+  // Otherwise, let static file handler deal with it
+  next();
 });
 
 // Scrape carpark occupancy data
@@ -91,6 +101,21 @@ const isProduction = process.env.NODE_ENV === 'production' || process.env.PORT;
 if (isProduction) {
   // Serve static files from dist directory
   const distPath = path.join(__dirname, '..', 'dist');
+  
+  // Check if dist directory exists
+  if (!fs.existsSync(distPath)) {
+    console.error(`❌ Error: dist directory not found at ${distPath}`);
+    console.error('   Make sure the application was built before starting the server.');
+    process.exit(1);
+  }
+  
+  // Check if index.html exists
+  const indexHtmlPath = path.join(distPath, 'index.html');
+  if (!fs.existsSync(indexHtmlPath)) {
+    console.error(`❌ Error: index.html not found at ${indexHtmlPath}`);
+    process.exit(1);
+  }
+  
   app.use(express.static(distPath));
   
   // Handle client-side routing - serve index.html for all non-API routes
@@ -99,7 +124,7 @@ if (isProduction) {
     if (req.path.startsWith('/api/')) {
       return next();
     }
-    res.sendFile(path.join(distPath, 'index.html'));
+    res.sendFile(indexHtmlPath);
   });
   
   console.log(`📁 Serving static files from ${distPath}`);
@@ -112,14 +137,35 @@ const isMainModule = import.meta.url === `file://${process.argv[1]}` ||
 
 if (isMainModule) {
   const serverPort = isProduction ? PORT : SCRAPER_PORT;
-  app.listen(serverPort, '0.0.0.0', () => {
+  
+  // Add error handling for server startup
+  const server = app.listen(serverPort, '0.0.0.0', () => {
     if (isProduction) {
       console.log(`🚀 Server running on http://0.0.0.0:${serverPort}`);
       console.log(`   - Static files: http://0.0.0.0:${serverPort}`);
       console.log(`   - API endpoints: http://0.0.0.0:${serverPort}/api/*`);
+      console.log(`   - Health check: http://0.0.0.0:${serverPort}/health`);
     } else {
       console.log(`🚀 Scraper API server running on http://0.0.0.0:${serverPort}`);
     }
+  });
+  
+  server.on('error', (error) => {
+    if (error.code === 'EADDRINUSE') {
+      console.error(`❌ Port ${serverPort} is already in use`);
+    } else {
+      console.error(`❌ Server error:`, error);
+    }
+    process.exit(1);
+  });
+  
+  // Graceful shutdown
+  process.on('SIGTERM', () => {
+    console.log('📴 SIGTERM received, shutting down gracefully...');
+    server.close(() => {
+      console.log('✅ Server closed');
+      process.exit(0);
+    });
   });
 }
 
