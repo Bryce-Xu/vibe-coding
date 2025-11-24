@@ -226,8 +226,13 @@ const App: React.FC = () => {
       return sorted.slice(0, 3);
   }, [state.carparks, state.userLocation]);
 
+  const isMapView = viewMode === 'map';
+  const containerClasses = isMapView
+    ? 'h-screen w-screen flex flex-col overflow-hidden bg-slate-50'
+    : 'min-h-screen w-screen flex flex-col bg-slate-50';
+
   return (
-    <div className="h-screen w-screen flex flex-col overflow-hidden bg-slate-50">
+    <div className={containerClasses}>
       
       {/* Top Bar Container - Floating */}
       <div className="absolute top-0 left-0 right-0 z-[1000] p-4 pointer-events-none">
@@ -386,8 +391,8 @@ const App: React.FC = () => {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 relative bg-slate-100">
-        {viewMode === 'map' ? (
+      <div className={`flex-1 relative bg-slate-100 ${isMapView ? '' : 'pb-10'}`}>
+        {isMapView ? (
              <ParkingMap 
                 userLocation={state.userLocation} 
                 carparks={sortedCarparks}
@@ -432,14 +437,21 @@ const App: React.FC = () => {
                                 >
                                     <div className="min-w-0 flex-1 pr-4">
                                         <div className="flex items-center gap-2 mb-1">
-                                            <h3 className="font-bold text-slate-800 truncate group-hover:text-blue-600 transition-colors">{carpark.facility_name}</h3>
+                                            <h3 className="font-bold text-slate-800 truncate group-hover:text-blue-600 transition-colors">
+                                              {carpark.facility_name.replace(/\s*\(historical only\)\s*/gi, '')}
+                                            </h3>
                                             {distanceStr && (
                                                 <span className="text-xs font-medium text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded flex-shrink-0">
                                                     {distanceStr}
                                                 </span>
                                             )}
                                         </div>
-                                        <p className="text-xs text-slate-500 truncate">Zone: {carpark.tsn || 'N/A'}</p>
+                                        <div className="flex items-center gap-2">
+                                          <p className="text-xs text-slate-500 truncate">Zone: {carpark.tsn || 'N/A'}</p>
+                                          {carpark.occupancy.time && total > 0 && (
+                                            <span className="text-[10px] text-slate-400">• {carpark.occupancy.time}</span>
+                                          )}
+                                        </div>
                                     </div>
                                     <div className="flex flex-col items-end shrink-0">
                                         {total > 0 ? (
@@ -503,8 +515,15 @@ const App: React.FC = () => {
                                 className="p-3 hover:bg-slate-50 transition-colors cursor-pointer flex items-center justify-between group"
                             >
                                 <div className="min-w-0 pr-3">
-                                    <h4 className="text-sm font-semibold text-slate-800 truncate group-hover:text-blue-600">{carpark.facility_name}</h4>
-                                    <p className="text-xs text-slate-400 mt-0.5">{distStr} away</p>
+                                    <h4 className="text-sm font-semibold text-slate-800 truncate group-hover:text-blue-600">
+                                      {carpark.facility_name.replace(/\s*\(historical only\)\s*/gi, '')}
+                                    </h4>
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                      <p className="text-xs text-slate-400">{distStr} away</p>
+                                      {carpark.occupancy.time && carpark.occupancy.total > 0 && (
+                                        <span className="text-[10px] text-slate-400">• {carpark.occupancy.time}</span>
+                                      )}
+                                    </div>
                                 </div>
                                 <div className="flex items-center gap-2 text-right">
                                     {total > 0 ? (

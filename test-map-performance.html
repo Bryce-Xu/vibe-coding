@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Map Performance Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-result {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 4px;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .warning { background: #fff3cd; color: #856404; }
+        .error { background: #f8d7da; color: #721c24; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #0056b3; }
+        #map { height: 400px; width: 100%; margin: 20px 0; }
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .metric {
+            padding: 15px;
+            background: #e9ecef;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .metric-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🗺️ 地图性能测试</h1>
+    
+    <div class="test-container">
+        <h2>测试说明</h2>
+        <p>这个测试页面用于验证地图优化效果，包括：</p>
+        <ul>
+            <li>地图瓦片加载速度</li>
+            <li>不同地图源的性能对比</li>
+            <li>浏览器缓存效果</li>
+            <li>地图渲染性能</li>
+        </ul>
+    </div>
+
+    <div class="test-container">
+        <h2>性能指标</h2>
+        <div class="metrics">
+            <div class="metric">
+                <div class="metric-value" id="tileCount">0</div>
+                <div class="metric-label">已加载瓦片</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" id="loadTime">0ms</div>
+                <div class="metric-label">加载时间</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" id="cacheHit">0%</div>
+                <div class="metric-label">缓存命中率</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" id="mapSource">-</div>
+                <div class="metric-label">当前地图源</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="test-container">
+        <h2>测试操作</h2>
+        <button onclick="testMapLoad()">测试地图加载</button>
+        <button onclick="testCache()">测试缓存效果</button>
+        <button onclick="testMapSources()">测试不同地图源</button>
+        <button onclick="clearCache()">清除缓存</button>
+    </div>
+
+    <div class="test-container">
+        <h2>测试结果</h2>
+        <div id="results"></div>
+    </div>
+
+    <div class="test-container">
+        <h2>地图预览</h2>
+        <div id="map"></div>
+    </div>
+
+    <script>
+        const MAP_SOURCES = [
+            {
+                name: 'CartoDB Positron',
+                url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+                subdomains: 'abcd'
+            },
+            {
+                name: 'OpenStreetMap',
+                url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                subdomains: 'abc'
+            },
+            {
+                name: 'OpenStreetMap DE',
+                url: 'https://{s}.tile.openstreetmap.de/{z}/{x}/{y}.png',
+                subdomains: 'abc'
+            }
+        ];
+
+        let tileCount = 0;
+        let cacheHits = 0;
+        let startTime = 0;
+        let currentSource = 0;
+
+        function addResult(message, type = 'info') {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `test-result ${type}`;
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            results.appendChild(div);
+            results.scrollTop = results.scrollHeight;
+        }
+
+        function updateMetrics() {
+            document.getElementById('tileCount').textContent = tileCount;
+            const loadTime = Date.now() - startTime;
+            document.getElementById('loadTime').textContent = loadTime + 'ms';
+            const cacheRate = tileCount > 0 ? Math.round((cacheHits / tileCount) * 100) : 0;
+            document.getElementById('cacheHit').textContent = cacheRate + '%';
+            document.getElementById('mapSource').textContent = MAP_SOURCES[currentSource]?.name || '-';
+        }
+
+        async function testMapLoad() {
+            addResult('开始测试地图加载性能...', 'info');
+            tileCount = 0;
+            cacheHits = 0;
+            startTime = Date.now();
+
+            const sydneyCenter = [-33.8688, 151.2093];
+            const zoom = 11;
+
+            // Calculate tiles needed for viewport
+            const tiles = calculateTiles(sydneyCenter, zoom, 400, 400);
+            addResult(`需要加载约 ${tiles} 个瓦片 (缩放级别 ${zoom})`, 'info');
+
+            // Test loading tiles
+            const subdomain = MAP_SOURCES[currentSource].subdomains[0];
+            const baseUrl = MAP_SOURCES[currentSource].url.replace('{s}', subdomain);
+
+            let loaded = 0;
+            const testTiles = Math.min(tiles, 20); // Test first 20 tiles
+
+            for (let x = 0; x < Math.ceil(Math.sqrt(testTiles)); x++) {
+                for (let y = 0; y < Math.ceil(Math.sqrt(testTiles)); y++) {
+                    if (loaded >= testTiles) break;
+                    
+                    const url = baseUrl
+                        .replace('{z}', zoom.toString())
+                        .replace('{x}', x.toString())
+                        .replace('{y}', y.toString())
+                        .replace('{r}', '');
+
+                    const tileStart = performance.now();
+                    try {
+                        const response = await fetch(url, { method: 'HEAD' });
+                        const tileTime = performance.now() - tileStart;
+                        
+                        tileCount++;
+                        if (response.headers.get('x-cache') === 'HIT' || response.status === 304) {
+                            cacheHits++;
+                        }
+                        
+                        if (loaded < 5) {
+                            addResult(`瓦片 ${x},${y}: ${Math.round(tileTime)}ms ${response.status === 304 ? '(缓存)' : ''}`, 
+                                response.status === 304 ? 'success' : 'info');
+                        }
+                        loaded++;
+                    } catch (error) {
+                        addResult(`瓦片 ${x},${y} 加载失败: ${error.message}`, 'error');
+                    }
+                }
+            }
+
+            updateMetrics();
+            const totalTime = Date.now() - startTime;
+            addResult(`✅ 测试完成: 加载了 ${tileCount} 个瓦片，耗时 ${totalTime}ms，平均 ${Math.round(totalTime / tileCount)}ms/瓦片`, 'success');
+        }
+
+        function calculateTiles(center, zoom, width, height) {
+            // Approximate calculation
+            const tilesPerScreen = Math.ceil(width / 256) * Math.ceil(height / 256);
+            return tilesPerScreen;
+        }
+
+        async function testCache() {
+            addResult('测试浏览器缓存效果...', 'info');
+            
+            // First load
+            addResult('第一次加载（无缓存）...', 'info');
+            tileCount = 0;
+            cacheHits = 0;
+            startTime = Date.now();
+            await testMapLoad();
+            
+            const firstLoadTime = Date.now() - startTime;
+            
+            // Wait a bit
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Second load (should use cache)
+            addResult('第二次加载（使用缓存）...', 'info');
+            tileCount = 0;
+            cacheHits = 0;
+            startTime = Date.now();
+            await testMapLoad();
+            
+            const secondLoadTime = Date.now() - startTime;
+            const improvement = Math.round(((firstLoadTime - secondLoadTime) / firstLoadTime) * 100);
+            
+            addResult(`缓存效果: 第一次 ${firstLoadTime}ms，第二次 ${secondLoadTime}ms，提升 ${improvement}%`, 
+                improvement > 50 ? 'success' : 'warning');
+        }
+
+        async function testMapSources() {
+            addResult('测试不同地图源的性能...', 'info');
+            
+            for (let i = 0; i < MAP_SOURCES.length; i++) {
+                currentSource = i;
+                addResult(`\n测试地图源: ${MAP_SOURCES[i].name}`, 'info');
+                
+                tileCount = 0;
+                cacheHits = 0;
+                startTime = Date.now();
+                
+                await testMapLoad();
+                
+                const loadTime = Date.now() - startTime;
+                addResult(`${MAP_SOURCES[i].name}: ${loadTime}ms (${tileCount} 瓦片)`, 
+                    loadTime < 2000 ? 'success' : 'warning');
+                
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
+
+        function clearCache() {
+            if ('caches' in window) {
+                caches.keys().then(names => {
+                    names.forEach(name => {
+                        caches.delete(name);
+                    });
+                });
+            }
+            addResult('✅ 缓存已清除（需要刷新页面才能完全清除）', 'success');
+        }
+
+        // Initialize
+        addResult('测试页面已加载，点击按钮开始测试', 'info');
+        updateMetrics();
+    </script>
+</body>
+</html>
+

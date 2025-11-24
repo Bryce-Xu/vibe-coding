@@ -16,6 +16,7 @@ export const DetailCard: React.FC<DetailCardProps> = ({ carpark, onClose, userLo
   const free = carpark.spots_free || 0;
   const hasRealtimeData = hasRealtimeOccupancyData(carpark);
   const hasOccupancyData = total > 0;
+  const hasUpdateTime = carpark.occupancy.time && carpark.occupancy.time.trim() !== '';
   
   let statusColor = "text-green-600 bg-green-50 border-green-200";
   let statusText = "Good Availability";
@@ -63,10 +64,19 @@ export const DetailCard: React.FC<DetailCardProps> = ({ carpark, onClose, userLo
              <div>
                 <span className="block text-xs font-semibold uppercase tracking-wider opacity-80">Status</span>
                 <span className="text-lg font-bold">{statusText}</span>
-                {!hasOccupancyData && hasRealtimeData && (
-                  <div className="mt-1 flex items-center gap-1 text-[10px] text-blue-600">
-                    <Info className="w-3 h-3" />
-                    <span>This Metro station supports real-time data</span>
+                {!hasOccupancyData && (
+                  <div className="mt-1 flex items-center gap-1 text-[10px]">
+                    {hasRealtimeData ? (
+                      <>
+                        <Info className="w-3 h-3 text-blue-600" />
+                        <span className="text-blue-600">This Metro station supports real-time data</span>
+                      </>
+                    ) : (
+                      <>
+                        <Info className="w-3 h-3 text-slate-400" />
+                        <span className="text-slate-500">Occupancy data not available for this location</span>
+                      </>
+                    )}
                   </div>
                 )}
              </div>
@@ -90,14 +100,28 @@ export const DetailCard: React.FC<DetailCardProps> = ({ carpark, onClose, userLo
                     <Car className="w-4 h-4" />
                     <span className="text-xs font-medium">Capacity</span>
                 </div>
-                <div className="text-lg font-semibold text-slate-800">{total} <span className="text-xs font-normal text-slate-500">total</span></div>
+                <div className="text-lg font-semibold text-slate-800">
+                  {total > 0 ? (
+                    <>{total} <span className="text-xs font-normal text-slate-500">total</span></>
+                  ) : (
+                    <span className="text-sm text-slate-400">No data</span>
+                  )}
+                </div>
             </div>
             <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
                  <div className="flex items-center gap-2 mb-1 text-slate-500">
                     <Clock className="w-4 h-4" />
                     <span className="text-xs font-medium">Last Update</span>
                 </div>
-                <div className="text-lg font-semibold text-slate-800">{carpark.occupancy.time || 'N/A'}</div>
+                <div className="text-lg font-semibold text-slate-800">
+                  {hasUpdateTime ? (
+                    <span>{carpark.occupancy.time}</span>
+                  ) : hasOccupancyData ? (
+                    <span className="text-sm text-slate-500">Just now</span>
+                  ) : (
+                    <span className="text-sm text-slate-400">N/A</span>
+                  )}
+                </div>
             </div>
           </div>
 

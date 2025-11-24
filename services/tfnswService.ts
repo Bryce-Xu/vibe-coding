@@ -1,6 +1,10 @@
 import { Carpark, Occupancy } from '../types';
 import { TFNSW_API_KEY, TFNSW_BASE_URL, TFNSW_OCCUPANCY_URL } from '../constants';
 import { scrapeCarparkOccupancy, matchScrapedData } from './webScrapingService';
+import { getCarparkCoordinates } from '../carpark-coordinates';
+
+// GraphQL API endpoint
+const GRAPHQL_API_URL = 'https://transportnsw.info/api/graphql';
 
 // Helper to calculate free spots safely
 const enrichCarparkData = (carpark: any): Carpark => {
@@ -15,6 +19,28 @@ const enrichCarparkData = (carpark: any): Carpark => {
     } as Occupancy,
     spots_free: Math.max(0, total - occupied)
   };
+};
+
+const ensureCoordinates = (carparks: Carpark[]): Carpark[] => {
+  return carparks.map(carpark => {
+    const lat = parseFloat(carpark.latitude);
+    const lng = parseFloat(carpark.longitude);
+    const hasValidCoords = !isNaN(lat) && !isNaN(lng) && !(lat === 0 && lng === 0);
+
+    if (hasValidCoords) return carpark;
+
+    const coords = getCarparkCoordinates(carpark.facility_name);
+    if (coords) {
+      return {
+        ...carpark,
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        tsn: carpark.tsn || coords.tsn || ''
+      };
+    }
+
+    return carpark;
+  });
 };
 
 /**
@@ -143,10 +169,31 @@ const mergeOccupancyData = (carparks: Carpark[], occupancyData: Record<string, a
 
 /**
  * Fetch only occupancy data (for manual refresh)
- * PRIORITY: Web scraping first, then API as fallback
+ * PRIORITY: GraphQL API first, then web scraping, then REST API as fallback
  */
 export const fetchOccupancyDataOnly = async (): Promise<Record<string, any>> => {
-  // Try web scraping first
+  // Try GraphQL API first (new primary method)
+  try {
+    const graphqlCarparks = await fetchCarparkDataFromGraphQL();
+    if (graphqlCarparks && graphqlCarparks.length > 0) {
+      // Convert to the expected format: { facility_id: { total, occupied, ... } }
+      const convertedData: Record<string, any> = {};
+      graphqlCarparks.forEach(carpark => {
+        convertedData[carpark.facility_id] = {
+          total: carpark.occupancy.total,
+          occupied: carpark.occupancy.occupied,
+          loop: carpark.occupancy.loop,
+          month: carpark.occupancy.month,
+          time: carpark.occupancy.time
+        };
+      });
+      return convertedData;
+    }
+  } catch (error) {
+    console.warn('⚠️ GraphQL API failed, trying web scraping...', error);
+  }
+  
+  // Try web scraping as fallback
   try {
     const scrapedData = await scrapeCarparkOccupancy();
     if (scrapedData && Object.keys(scrapedData).length > 0) {
@@ -162,24 +209,149 @@ export const fetchOccupancyDataOnly = async (): Promise<Record<string, any>> => 
       return convertedData;
     }
   } catch (error) {
-    console.warn('⚠️ Web scraping failed, trying API...', error);
+    console.warn('⚠️ Web scraping failed, trying REST API...', error);
   }
   
-  // Fallback to API
+  // Fallback to REST API
   try {
     const apiData = await fetchOccupancyData();
     if (apiData && Object.keys(apiData).length > 0) {
       return apiData;
     }
   } catch (error) {
-    console.error('⚠️ API also failed:', error);
+    console.error('⚠️ REST API also failed:', error);
   }
   
   return {};
 };
 
+/**
+ * Fetch carpark data from GraphQL API
+ * This is the new primary method for getting real-time parking data
+ */
+const fetchCarparkDataFromGraphQL = async (): Promise<Carpark[]> => {
+  try {
+    const query = {
+      query: "query{result:widgets{pnrLocations{name spots occupancy}}}"
+    };
+
+    // Use proxy in development to avoid CORS issues, direct URL in production
+    const isDevelopment = import.meta.env.DEV;
+    const graphqlUrl = isDevelopment 
+      ? '/api/graphql'  // Use Vite proxy in development
+      : GRAPHQL_API_URL; // Direct API call in production
+
+    const response = await fetch(graphqlUrl, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'user-agent': 'NSW-Park-Ride-Checker/1.0'
+      },
+      body: JSON.stringify(query)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Unknown error');
+      throw new Error(`GraphQL API error: ${response.status} ${response.statusText}. ${errorText}`);
+    }
+
+    const result = await response.json();
+    
+    // Handle GraphQL response structure: { data: { result: { widgets: { pnrLocations: [...] } } } }
+    const pnrLocations = result?.data?.result?.widgets?.pnrLocations || [];
+    
+    if (!Array.isArray(pnrLocations) || pnrLocations.length === 0) {
+      console.warn('⚠️ GraphQL API returned empty or invalid data structure');
+      return [];
+    }
+
+    // Get current timestamp for last update
+    const now = new Date();
+    const updateTime = now.toLocaleTimeString('en-AU', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: false 
+    });
+    const updateMonth = now.toLocaleDateString('en-AU', { 
+      month: 'short' 
+    });
+
+    // Convert GraphQL response to Carpark format
+    const missingCoords = new Set<string>();
+
+    const carparks: Carpark[] = pnrLocations.map((location: any, index: number) => {
+      let name = location.name || '';
+      
+      // Clean name: remove "(historical only)" and other markers
+      name = name
+        .replace(/\s*\(historical only\)\s*/gi, '')
+        .replace(/\s*\(historical\)\s*/gi, '')
+        .trim();
+      
+      const spots = parseInt(String(location.spots || 0), 10); // Available spots
+      const occupancy = parseInt(String(location.occupancy || 0), 10); // Occupied spots
+      const total = spots + occupancy; // Total spots
+
+      // Generate a facility_id if not provided (use index or hash of name)
+      const facility_id = location.facility_id || `graphql_${index}_${name.replace(/\s+/g, '_').toLowerCase()}`;
+
+      // Get coordinates from mapping
+      const coords = getCarparkCoordinates(name);
+      if (!coords) {
+        missingCoords.add(name);
+      }
+
+      return enrichCarparkData({
+        facility_id,
+        facility_name: name,
+        latitude: coords?.latitude || "0",
+        longitude: coords?.longitude || "0",
+        tsn: coords?.tsn || "",
+        park_id: facility_id,
+        zones: [],
+        occupancy: {
+          loop: "1",
+          total,
+          occupied: occupancy,
+          month: updateMonth,
+          time: updateTime
+        }
+      });
+    });
+
+    if (missingCoords.size > 0) {
+      console.warn(`⚠️ Missing coordinates for ${missingCoords.size} carparks:`, Array.from(missingCoords).join(', '));
+    }
+
+    const enriched = ensureCoordinates(carparks);
+
+    console.log(`✅ Successfully loaded ${enriched.length} carparks from GraphQL API`);
+    return enriched;
+  } catch (error) {
+    console.error('⚠️ Failed to fetch data from GraphQL API:', error);
+    throw error;
+  }
+};
+
 export const fetchCarparkData = async (): Promise<{ data: Carpark[], isDemo: boolean }> => {
-  // Ensure API key is available
+  // Try GraphQL API first (new primary method)
+  console.log('📊 Fetching real-time parking data from GraphQL API...');
+  
+  try {
+    const graphqlData = await fetchCarparkDataFromGraphQL();
+    if (graphqlData && graphqlData.length > 0) {
+      const enrichedCount = graphqlData.filter(c => c.occupancy.total > 0).length;
+      console.log(`✅ Successfully loaded ${enrichedCount} carparks with occupancy data from GraphQL API`);
+      return { data: graphqlData, isDemo: false };
+    }
+  } catch (graphqlError) {
+    console.warn('⚠️ GraphQL API failed, falling back to REST API:', graphqlError);
+  }
+
+  // Fallback to REST API if GraphQL fails
+  console.log('🔄 Falling back to REST API...');
+  
+  // Ensure API key is available for REST API fallback
   if (!TFNSW_API_KEY) {
     throw new Error("TFNSW API Key is not configured. Please set VITE_TFNSW_API_KEY environment variable.");
   }
@@ -262,12 +434,14 @@ export const fetchCarparkData = async (): Promise<{ data: Carpark[], isDemo: boo
       });
   }
 
+  parsedData = ensureCoordinates(parsedData);
+
   if (parsedData.length === 0) {
     console.warn("API returned empty data. Check API response structure.");
     return { data: [], isDemo: false };
   }
 
-  console.log(`✅ Successfully loaded ${parsedData.length} carparks from Transport NSW API`);
+  console.log(`✅ Successfully loaded ${parsedData.length} carparks from Transport NSW REST API`);
 
   // PRIORITY: Try web scraping first (more reliable and no quota limits)
   console.log('📊 Attempting to fetch real-time occupancy data from website...');

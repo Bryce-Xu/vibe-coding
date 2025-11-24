@@ -14,6 +14,18 @@ export default defineConfig(({ mode }) => {
             target: `http://localhost:${process.env.SCRAPER_PORT || 3001}`,
             changeOrigin: true,
           },
+          // Proxy GraphQL API requests to avoid CORS issues in development
+          '/api/graphql': {
+            target: 'https://transportnsw.info',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api\/graphql/, '/api/graphql'),
+            configure: (proxy, _options) => {
+              proxy.on('proxyReq', (proxyReq, req, _res) => {
+                proxyReq.setHeader('content-type', 'application/json');
+                proxyReq.setHeader('user-agent', 'NSW-Park-Ride-Checker/1.0');
+              });
+            },
+          },
           // Proxy API requests to avoid CORS issues in development
           '/api/tfnsw': {
             target: 'https://api.transport.nsw.gov.au',
