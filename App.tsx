@@ -348,21 +348,36 @@ const App: React.FC = () => {
         {/* Info banner for carparks without occupancy data */}
         {!state.error && state.carparks.length > 0 && state.carparks.every(c => !c.occupancy.total || c.occupancy.total === 0) && (
              <div className="max-w-4xl mx-auto mt-2 pointer-events-auto">
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-2 px-3 flex items-center justify-between gap-2 text-xs text-blue-800 shadow-sm animate-in fade-in slide-in-from-top-2">
-                    <div className="flex items-center gap-2">
-                        <AlertTriangle className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                        <span>Real-time occupancy data unavailable. Click to refresh.</span>
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 px-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-blue-800 shadow-sm animate-in fade-in slide-in-from-top-2">
+                    <div className="flex items-start gap-2 flex-1">
+                        <AlertTriangle className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1">
+                            <div className="font-medium mb-1">Real-time occupancy data unavailable</div>
+                            <div className="text-blue-700 text-[11px]">
+                                API quota limit reached. Wait a few minutes and click refresh, or request higher limits from OpenDataHelp@transport.nsw.gov.au
+                            </div>
+                        </div>
                     </div>
                     <button
                         onClick={handleRefreshOccupancy}
                         disabled={loadingOccupancy}
-                        className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+                        className={`px-4 py-2 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
                             loadingOccupancy 
                                 ? 'bg-blue-100 text-blue-400 cursor-not-allowed' 
-                                : 'bg-blue-200 text-blue-700 hover:bg-blue-300 active:scale-95'
+                                : 'bg-blue-200 text-blue-700 hover:bg-blue-300 active:scale-95 shadow-sm'
                         }`}
                     >
-                        {loadingOccupancy ? 'Loading...' : 'Refresh Occupancy'}
+                        {loadingOccupancy ? (
+                            <span className="flex items-center gap-2">
+                                <RefreshCw className="w-3 h-3 animate-spin" />
+                                Loading...
+                            </span>
+                        ) : (
+                            <span className="flex items-center gap-2">
+                                <RefreshCw className="w-3 h-3" />
+                                Refresh Occupancy
+                            </span>
+                        )}
                     </button>
                 </div>
             </div>
