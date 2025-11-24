@@ -1,5 +1,4 @@
 import { Carpark, Occupancy } from '../types';
-import { scrapeCarparkOccupancy, matchScrapedData } from './webScrapingService';
 import { getCarparkCoordinates } from '../carpark-coordinates';
 
 // Helper to calculate free spots safely
@@ -42,10 +41,9 @@ const ensureCoordinates = (carparks: Carpark[]): Carpark[] => {
 
 /**
  * Fetch only occupancy data (for manual refresh)
- * Uses GraphQL API only, with web scraping as fallback
+ * Uses GraphQL API only
  */
 export const fetchOccupancyDataOnly = async (): Promise<Record<string, any>> => {
-  // Try GraphQL API first (primary method)
   try {
     const graphqlCarparks = await fetchCarparkDataFromGraphQL();
     if (graphqlCarparks && graphqlCarparks.length > 0) {
@@ -63,26 +61,7 @@ export const fetchOccupancyDataOnly = async (): Promise<Record<string, any>> => 
       return convertedData;
     }
   } catch (error) {
-    console.warn('⚠️ GraphQL API failed, trying web scraping...', error);
-  }
-  
-  // Try web scraping as fallback
-  try {
-    const scrapedData = await scrapeCarparkOccupancy();
-    if (scrapedData && Object.keys(scrapedData).length > 0) {
-      // Convert scraped data format to match API format
-      const convertedData: Record<string, any> = {};
-      Object.entries(scrapedData).forEach(([name, data]) => {
-        convertedData[name] = {
-          total: data.spaces * 2, // Estimate total
-          occupied: data.spaces, // This is approximate
-          available: data.spaces
-        };
-      });
-      return convertedData;
-    }
-  } catch (error) {
-    console.warn('⚠️ Web scraping also failed:', error);
+    console.error('⚠️ GraphQL API failed:', error);
   }
   
   return {};
@@ -119,8 +98,8 @@ const fetchCarparkDataFromGraphQL = async (): Promise<Carpark[]> => {
 
     const result = await response.json();
     
-    // Handle GraphQL response structure: { data: { result: { widgets: { pnrLocations: [...] } } } }
-    const pnrLocations = result?.data?.result?.widgets?.pnrLocations || [];
+    // Handle GraphQL response structure: { data: { result: { pnrLocations: [...] } } }
+    const pnrLocations = result?.data?.result?.pnrLocations || [];
     
     if (!Array.isArray(pnrLocations) || pnrLocations.length === 0) {
       console.warn('⚠️ GraphQL API returned empty or invalid data structure');
@@ -207,43 +186,9 @@ export const fetchCarparkData = async (): Promise<{ data: Carpark[], isDemo: boo
       return { data: graphqlData, isDemo: false };
     }
   } catch (graphqlError) {
-    console.warn('⚠️ GraphQL API failed, trying web scraping as fallback:', graphqlError);
-    
-    // Fallback to web scraping if GraphQL fails
-    try {
-      const scrapedData = await scrapeCarparkOccupancy();
-      if (scrapedData && Object.keys(scrapedData).length > 0) {
-        // Create basic carpark list from scraped data
-        const carparks: Carpark[] = Object.entries(scrapedData).map(([name, data]) => {
-          const coords = getCarparkCoordinates(name);
-          return enrichCarparkData({
-            facility_id: `scraped_${name.replace(/\s+/g, '_').toLowerCase()}`,
-            facility_name: name,
-            latitude: coords?.latitude || "0",
-            longitude: coords?.longitude || "0",
-            tsn: coords?.tsn || "",
-            park_id: `scraped_${name.replace(/\s+/g, '_').toLowerCase()}`,
-            zones: [],
-            occupancy: {
-              loop: "1",
-              total: data.spaces * 2, // Estimate total
-              occupied: data.spaces, // Approximate
-              month: new Date().toLocaleDateString('en-AU', { month: 'short' }),
-              time: new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })
-            }
-          });
-        });
-        
-        const enrichedData = ensureCoordinates(carparks);
-        const enrichedCount = enrichedData.filter(c => c.occupancy.total > 0).length;
-        console.log(`✅ Successfully loaded ${enrichedCount} carparks from web scraping`);
-        return { data: enrichedData, isDemo: false };
-      }
-    } catch (scrapeError) {
-      console.error('⚠️ Web scraping also failed:', scrapeError);
-    }
+    console.error('⚠️ GraphQL API failed:', graphqlError);
   }
   
-  console.warn('⚠️ Unable to fetch parking data from any source');
+  console.warn('⚠️ Unable to fetch parking data from GraphQL API');
   return { data: [], isDemo: false };
 };
