@@ -1,0 +1,12 @@
+{
+  "repo_url": "https://github.com/username/repo-name.git",
+  "service_name": "your-service-name",
+  "branch": "main",
+  "port": 8000,
+  "env_vars": {
+    "NODE_ENV": "production",
+    "VITE_TFNSW_API_KEY": "your-api-key-here",
+    "OTHER_ENV_VAR": "value"
+  }
+}
+

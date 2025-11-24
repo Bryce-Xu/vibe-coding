@@ -47,20 +47,25 @@ const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('map');
 
   const loadData = useCallback(async () => {
-    setState(prev => ({ ...prev, loading: true, error: null }));
+    setState(prev => ({ ...prev, loading: true, error: null, demoMode: false }));
     try {
       const { data, isDemo } = await fetchCarparkData();
       setState(prev => ({
         ...prev,
         carparks: data,
         demoMode: isDemo,
-        loading: false
+        loading: false,
+        error: null
       }));
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to load parking data from Transport NSW API.";
+      console.error("Error loading parking data:", err);
       setState(prev => ({
         ...prev,
-        error: "Failed to load parking data.",
-        loading: false
+        error: errorMessage,
+        loading: false,
+        demoMode: false,
+        carparks: [] // Clear carparks on error
       }));
     }
   }, []);
@@ -275,11 +280,14 @@ const App: React.FC = () => {
           </div>
         </div>
         
-        {state.demoMode && (
+        {state.error && (
              <div className="max-w-4xl mx-auto mt-2 pointer-events-auto">
-                <div className="bg-orange-50 border border-orange-200 rounded-xl p-2 px-3 flex items-center gap-2 text-xs text-orange-800 shadow-sm animate-in fade-in slide-in-from-top-2">
-                    <AlertTriangle className="w-4 h-4 text-orange-500 flex-shrink-0" />
-                    <span>Using Demo Data (CORS/API Limit)</span>
+                <div className="bg-red-50 border border-red-200 rounded-xl p-3 px-4 flex items-start gap-3 text-sm text-red-800 shadow-sm animate-in fade-in slide-in-from-top-2">
+                    <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                        <div className="font-semibold mb-1">Failed to Load Real Data</div>
+                        <div className="text-xs text-red-700">{state.error}</div>
+                    </div>
                 </div>
             </div>
         )}
