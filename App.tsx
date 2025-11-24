@@ -6,6 +6,13 @@ import { hasRealtimeOccupancyData } from './constants';
 import { AppState, Carpark } from './types';
 import { MapPin, RefreshCw, AlertTriangle, Search, List, Map as MapIcon, ArrowUpDown, Navigation, ChevronRight, X } from 'lucide-react';
 
+// Log deployment info in production
+if (import.meta.env.PROD) {
+  const gitCommit = import.meta.env.VITE_GIT_COMMIT || 'unknown';
+  const buildTime = import.meta.env.VITE_BUILD_TIME || 'unknown';
+  console.log(`🚀 Deployed commit: ${gitCommit.substring(0, 7)} | Build: ${buildTime}`);
+}
+
 // --- Utility Functions for Distance ---
 
 function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {

@@ -47,7 +47,31 @@ export default defineConfig(({ mode }) => {
       plugins: [react()],
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
+        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+        // Inject git commit info at build time
+        'import.meta.env.VITE_GIT_COMMIT': JSON.stringify(
+          process.env.GIT_COMMIT || 
+          (() => {
+            try {
+              const { execSync } = require('child_process');
+              return execSync('git rev-parse HEAD', { encoding: 'utf-8' }).trim();
+            } catch {
+              return 'unknown';
+            }
+          })()
+        ),
+        'import.meta.env.VITE_GIT_BRANCH': JSON.stringify(
+          process.env.GIT_BRANCH || 
+          (() => {
+            try {
+              const { execSync } = require('child_process');
+              return execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8' }).trim();
+            } catch {
+              return 'unknown';
+            }
+          })()
+        ),
+        'import.meta.env.VITE_BUILD_TIME': JSON.stringify(new Date().toISOString())
       },
       resolve: {
         alias: {
