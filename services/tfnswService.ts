@@ -25,7 +25,7 @@ export const fetchCarparkData = async (): Promise<{ data: Carpark[], isDemo: boo
   const response = await fetch(TFNSW_BASE_URL, {
     method: 'GET',
     headers: {
-      'Authorization': `Bearer ${TFNSW_API_KEY}`,
+      'Authorization': `apikey ${TFNSW_API_KEY}`,
       'Accept': 'application/json'
     }
   });
@@ -38,21 +38,44 @@ export const fetchCarparkData = async (): Promise<{ data: Carpark[], isDemo: boo
 
   const data = await response.json();
   
-  // The API structure can vary, sometimes it's an object with keys, sometimes an array.
-  // We assume a standard array or a mapped object.
-  // Based on typical TfNSW output, it might be a dictionary facility_id -> data or a flat array.
+  // The API returns an object with facility_id as keys and facility_name as values
+  // Format: { "486": "Park&Ride - Ashfield", "487": "Park&Ride - Kogarah", ... }
+  // We need to transform this into our Carpark format
   
   let parsedData: Carpark[] = [];
   
   if (Array.isArray(data)) {
+      // If it's an array, map directly
       parsedData = data.map(enrichCarparkData);
   } else if (typeof data === 'object' && data !== null) {
-      // Handle potential keyed response
-      parsedData = Object.values(data).map(enrichCarparkData);
+      // Handle object format: { facility_id: facility_name }
+      parsedData = Object.entries(data).map(([facility_id, facility_name]) => {
+        // Create a basic carpark object - we'll need to fetch occupancy separately
+        // For now, create a structure that matches our type
+        const carpark: any = {
+          facility_id: facility_id,
+          facility_name: typeof facility_name === 'string' ? facility_name : String(facility_name),
+          latitude: "0", // Will need to be fetched from another endpoint or geocoded
+          longitude: "0",
+          tsn: "", // Will need to be fetched from another endpoint
+          park_id: facility_id,
+          zones: [],
+          occupancy: {
+            loop: "1",
+            total: 0, // Will need to fetch from occupancy endpoint
+            occupied: 0,
+            month: "",
+            time: ""
+          }
+        };
+        return enrichCarparkData(carpark);
+      });
   }
 
   if (parsedData.length === 0) {
     console.warn("API returned empty data. Check API response structure.");
+  } else {
+    console.log(`✅ Successfully loaded ${parsedData.length} carparks from Transport NSW API`);
   }
 
   return { data: parsedData, isDemo: false };
