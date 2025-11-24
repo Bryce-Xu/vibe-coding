@@ -1,0 +1,7 @@
+{
+  "name": "NSW Park & Ride Checker",
+  "description": "Real-time parking availability for Transport NSW Park & Ride locations using Open Data.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
